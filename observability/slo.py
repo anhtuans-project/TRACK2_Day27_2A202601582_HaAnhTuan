@@ -37,31 +37,33 @@ def evaluate_multiwindow_burn(
     long_window_burn: float,
     policy: str = "starter",
 ) -> dict[str, Any]:
-    """Implements a multi-window burn-rate policy to distinguish sustained burn from spikes.
+    """Implements a multi-window burn-rate policy based on SRE best practices.
 
-    A critical page is triggered only if both short and long windows show high burn,
-    reducing noise from transient spikes.
+    To reduce noise, we require a high burn rate in the short window
+    AND a sustained (though potentially lower) burn rate in the long window.
     """
-    # Industry standard thresholds for SRE burn rates
-    CRITICAL_THRESHOLD = 14.4
-    WARNING_THRESHOLD = 6.0
+    # SRE Standard Thresholds
+    # Short window (e.g., 1h) needs to be very high to indicate a critical issue
+    SHORT_CRITICAL = 14.4
+    # Long window (e.g., 6h) indicates sustainability.
+    # A burn rate of 1.0 means we are consuming budget exactly at the rate we earn it.
+    # We typically want to see it significantly above 1.0 to page.
+    LONG_CRITICAL = 2.0
 
-    # Critical: Sustained fast burn (both windows high)
-    if short_window_burn >= CRITICAL_THRESHOLD and long_window_burn >= CRITICAL_THRESHOLD:
+    if short_window_burn >= SHORT_CRITICAL and long_window_burn >= LONG_CRITICAL:
         return {
             "page": True,
             "severity": "critical",
-            "reason": "Sustained fast burn detected across both windows",
+            "reason": "Sustained critical burn detected (High short-window, sustained long-window)",
             "short_window_burn": short_window_burn,
             "long_window_burn": long_window_burn,
         }
 
-    # Warning: Either window is high, or they are both moderately high
-    if short_window_burn >= WARNING_THRESHOLD or long_window_burn >= WARNING_THRESHOLD:
+    if short_window_burn >= 6.0 or long_window_burn >= 6.0:
         return {
             "page": False,
             "severity": "warning",
-            "reason": "Burn rate elevation detected; monitoring for sustainability",
+            "reason": "Elevated burn rate detected",
             "short_window_burn": short_window_burn,
             "long_window_burn": long_window_burn,
         }

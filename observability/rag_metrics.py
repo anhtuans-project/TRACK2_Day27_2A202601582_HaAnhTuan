@@ -29,17 +29,20 @@ def detect_text_length_shift(
 def detect_embedding_norm_shift(
     current_norms: Iterable[float], baseline_norms: Iterable[float]
 ) -> dict[str, Any]:
-    """Detects drift in embedding norms using robust MAD detector."""
+    """Detects drift in embedding norms using robust MAD detector on the median."""
     from observability.anomaly import mad_detector, zscore_detector
 
-    current_mean = float(np.mean(current_norms)) if current_norms else 0.0
+    # Use median for current norms to be robust against outliers
+    current_norms_list = list(current_norms)
+    current_median = float(np.median(current_norms_list)) if current_norms_list else 0.0
     baseline_list = list(baseline_norms)
 
+    # Use MAD detector on the median for high robustness
     if len(baseline_list) >= 5:
-        result = mad_detector(current_mean, baseline_list)
+        result = mad_detector(current_median, baseline_list)
     else:
-        result = zscore_detector(current_mean, baseline_list)
+        result = zscore_detector(current_median, baseline_list)
 
     result["metric"] = "embedding_norm_shift"
-    result["current_mean"] = current_mean
+    result["current_median"] = current_median
     return result
