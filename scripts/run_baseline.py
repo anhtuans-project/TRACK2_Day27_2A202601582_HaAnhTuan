@@ -15,7 +15,7 @@ from observability.anomaly import detect_anomaly
 from observability.lineage import get_downstream_assets
 from observability.rag_metrics import detect_text_length_shift
 from observability.slo import calculate_slo
-from src.contract_validator import failed_issues, load_contract, validate_dataframe
+from src.contract_validator import failed_issues, load_contract, validate_dataframe, determine_action
 from src.io_utils import load_jsonl
 
 
@@ -23,7 +23,27 @@ def main() -> None:
     orders = pd.read_csv(ROOT / "data" / "incoming" / "orders.csv")
     history = pd.read_csv(ROOT / "data" / "history" / "metrics_history.csv")
     contract = load_contract(ROOT / "contracts" / "orders_contract.yaml")
-    issues = validate_dataframe(orders, contract)
+    issues, failed_mask = validate_dataframe(orders, contract)
+    action = determine_action(issues)
+
+    if action in ("block", "quarantine"):
+        print(f"Pipeline Action: {action.upper()} due to contract violations.")
+        quarantine_dir = ROOT / "data" / "quarantine"
+        quarantine_dir.mkdir(parents=True, exist_ok=True)
+
+        clean_orders = orders[~failed_mask]
+        quarantine_orders = orders[failed_mask]
+
+        quarantine_path = quarantine_dir / "orders_quarantine.csv"
+        quarantine_orders.to_csv(quarantine_path, index=False)
+        print(f"Quarantined {len(quarantine_orders)} rows to {quarantine_path}")
+
+        if action == "block":
+            print("CRITICAL: Pipeline blocked. Stopping execution.")
+            sys.exit(1)
+
+        orders = clean_orders
+
     failed = failed_issues(issues)
     critical_failed = failed_issues(issues, min_severity="critical")
 

@@ -25,35 +25,54 @@ def main() -> None:
     df = pd.read_csv(ROOT / "data" / "incoming" / "orders.csv")
     context = gx.get_context()
 
-    # Use unique names so re-running inside an ephemeral context is simple.
+    # Setup Data Source and Asset
     data_source = context.data_sources.add_pandas("orders_pandas")
     asset = data_source.add_dataframe_asset(name="orders_dataframe")
     batch_definition = asset.add_batch_definition_whole_dataframe("whole_orders")
     batch = batch_definition.get_batch(batch_parameters={"dataframe": df})
 
+    # 1. Create Expectation Suite
+    suite = gx.ExpectationSuite(name="orders_suite")
+
     expectations = [
-        gx.expectations.ExpectColumnValuesToNotBeNull(
-            column="order_id", severity="critical"
-        ),
-        gx.expectations.ExpectColumnValuesToBeUnique(
-            column="order_id", severity="critical"
-        ),
-        gx.expectations.ExpectColumnValuesToBeBetween(
-            column="amount", min_value=0, severity="critical"
-        ),
-        gx.expectations.ExpectColumnValuesToBeInSet(
-            column="currency", value_set=["USD", "VND"], severity="critical"
-        ),
+        gx.expectations.ExpectColumnValuesToNotBeNull(column="order_id"),
+        gx.expectations.ExpectColumnValuesToBeUnique(column="order_id"),
+        gx.expectations.ExpectColumnValuesToBeBetween(column="amount", min_value=0),
+        gx.expectations.ExpectColumnValuesToBeInSet(column="currency", value_set=["USD", "VND"]),
     ]
 
-    all_ok = True
-    for expectation in expectations:
-        result = batch.validate(expectation)
-        all_ok = all_ok and bool(result.success)
-        print(f"{expectation.__class__.__name__:<40} success={result.success}")
+    for exp in expectations:
+        suite.add_expectation(exp)
 
-    print("\nStarter GX result:", "PASS" if all_ok else "FAIL")
-    print("TODO: package these expectations into a Suite + ValidationDefinition + Checkpoint + Actions.")
+    context.suites.add(suite)
+
+    # 2. Create Validation Definition
+    validation_def = gx.ValidationDefinition(
+        name="orders_validation",
+        data=batch_definition,
+        suite=suite
+    )
+    context.validation_definitions.add(validation_def)
+
+    # 3. Create Checkpoint
+    checkpoint = gx.Checkpoint(
+        name="orders_checkpoint",
+        validation_definitions=[validation_def]
+    )
+    context.checkpoints.add(checkpoint)
+
+    # Run Validation
+    result = checkpoint.run(batch_parameters={"dataframe": df})
+
+    # The result of a checkpoint is a CheckpointResult, which contains a dict of ValidationResults
+    validation_result = list(result.run_results.values())[0]
+    all_ok = validation_result.success
+
+    print(f"\nGX Validation result: {'PASS' if all_ok else 'FAIL'}")
+    for result in validation_result.results:
+        print(f"{result.expectation_config.type:<40} success={result.success}")
+
+    print("\nStructured GX flow complete.")
 
 
 if __name__ == "__main__":
