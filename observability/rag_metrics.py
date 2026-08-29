@@ -29,9 +29,17 @@ def detect_text_length_shift(
 def detect_embedding_norm_shift(
     current_norms: Iterable[float], baseline_norms: Iterable[float]
 ) -> dict[str, Any]:
-    """TODO(student): implement embedding-space drift signal.
+    """Detects drift in embedding norms using robust MAD detector."""
+    from observability.anomaly import mad_detector, zscore_detector
 
-    No embedding model is required for the starter lab. Hidden evaluation can
-    feed precomputed norms/similarities through this stable interface.
-    """
-    return {"is_anomaly": False, "score": 0.0, "method": "not_implemented"}
+    current_mean = float(np.mean(current_norms)) if current_norms else 0.0
+    baseline_list = list(baseline_norms)
+
+    if len(baseline_list) >= 5:
+        result = mad_detector(current_mean, baseline_list)
+    else:
+        result = zscore_detector(current_mean, baseline_list)
+
+    result["metric"] = "embedding_norm_shift"
+    result["current_mean"] = current_mean
+    return result

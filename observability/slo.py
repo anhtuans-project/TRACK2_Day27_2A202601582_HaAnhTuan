@@ -37,15 +37,16 @@ def evaluate_multiwindow_burn(
     long_window_burn: float,
     policy: str = "starter",
 ) -> dict[str, Any]:
-    """TODO(student): implement a real multi-window burn-rate policy.
+    """Implements a multi-window burn-rate policy to distinguish sustained burn from spikes.
 
-    Starter intentionally never pages. Hidden evaluation contains cases that
-    require distinguishing sustained fast burn from a transient spike.
+    A critical page is triggered only if both short and long windows show high burn,
+    reducing noise from transient spikes.
     """
     # Industry standard thresholds for SRE burn rates
     CRITICAL_THRESHOLD = 14.4
     WARNING_THRESHOLD = 6.0
 
+    # Critical: Sustained fast burn (both windows high)
     if short_window_burn >= CRITICAL_THRESHOLD and long_window_burn >= CRITICAL_THRESHOLD:
         return {
             "page": True,
@@ -55,11 +56,12 @@ def evaluate_multiwindow_burn(
             "long_window_burn": long_window_burn,
         }
 
+    # Warning: Either window is high, or they are both moderately high
     if short_window_burn >= WARNING_THRESHOLD or long_window_burn >= WARNING_THRESHOLD:
         return {
             "page": False,
             "severity": "warning",
-            "reason": "Transient spike or moderate burn detected",
+            "reason": "Burn rate elevation detected; monitoring for sustainability",
             "short_window_burn": short_window_burn,
             "long_window_burn": long_window_burn,
         }
