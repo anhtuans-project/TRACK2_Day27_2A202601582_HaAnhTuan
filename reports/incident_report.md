@@ -1,54 +1,57 @@
-# Incident Report: Revenue Inflation in CEO Dashboard
+# Incident Report: Mystery Incident - Massive Data Loss & Customer Corruption
 
 ## Severity
-P1 (Critical)
+P0 (Critical)
 
 ## Summary
-A combination of source data quality degradation (duplicate records and type drift in `orders`) and a transformation logic bug in the revenue mart led to significant revenue inflation in the CEO dashboard. The lack of automated guards allowed these errors to propagate from source to the final report.
+A catastrophic data failure occurred on 2026-08-29 characterized by massive data loss in the orders stream and corruption of the customer master data. This resulted in a CEO dashboard that showed a severe drop in order volume combined with inflated revenue for the remaining orders.
 
 ## Detection
-- **Signal**: Anomaly detection on `daily_revenue` triggered a high Z-score/MAD alert.
-- **First observed time**: 2026-08-27
+- **Signal**: `row_count_anomaly` triggered with a score of 11.63 (MAD), indicating a massive deviation from historical norms.
+- **First observed time**: 2026-08-29
 
 ## Root Cause
-1. **Source Layer**: The `orders` source dataset experienced "type drift" and contained duplicate `order_id` entries, violating the data contract.
-2. **Transformation Layer**: In `fct_daily_revenue`, a join between `stg_orders` and `stg_customers` produced a many-to-one relationship because of duplicate active customer records. This caused the `sum(amount)` to inflate, effectively double-counting revenue for affected orders.
+1. **Upstream Data Loss**: The `orders` dataset arrived with only 37 rows compared to the historical median of 252.5, indicating an upstream extraction or ingestion failure.
+2. **Master Data Corruption**: The `stg_customers` table contained 6 duplicate `customer_id` entries (C0033, C0022, C0044, C0066, C0055, C0011).
+3. **Transformation Logic**: `fct_daily_revenue` performs a join on `customer_id`. The presence of duplicates in the customer dimension caused a "join explosion," inflating the revenue for orders belonging to the corrupted customers.
+4. **Data Staleness**: Order data arrived with a 32.9-minute delay, exceeding the 30-minute contract limit.
 
 ## Evidence
-1. **GX Validation**: Great Expectations checkpoints identified critical violations of the `orders` contract (nulls in non-nullable columns and PK duplicates).
-2. **dbt Unit Tests**: A specifically designed unit test mocked a many-to-one customer-order relationship, proving that the existing SQL logic inflated revenue.
-3. **Anomaly Metrics**: The `mad_detector` flagged the revenue spike as a significant outlier compared to the 30-day historical median.
+1. **Anomaly Metrics**: `reports/latest_metrics.json` showed `orders_rows: 37` vs `median=252.500`.
+2. **dbt Tests**: `unique_stg_customers_customer_id` failed with 6 duplicate records.
+3. **Data Exploration**: SQL queries confirmed that customers C0022, C0044, and C0011 had orders in the current batch, confirming that their revenue was doubled in the final mart.
+4. **Contract Validation**: Baseline pipeline flagged a `warning` for freshness (32.9 min).
 
 ## Blast Radius
-The failure propagated as follows:
 ```text
-src_orders (Duplicates/Drift) 
-  -> stg_orders (Contract Breach)
-    -> fct_daily_revenue (Revenue Inflation)
-      -> CEO Dashboard (Incorrect Financials)
+src_orders (Data Loss / Staleness) 
+  -> stg_orders (Volume Drop)
+    -> fct_daily_revenue (Revenue Inflation via Customer Duplicates)
+      -> CEO Dashboard (Critically Under-reported Volume / Inflated Revenue)
 ```
-The primary impacted column was `daily_revenue`, which directly affected the CEO's view of company performance.
+The CEO dashboard became completely unreliable for both volume and financial metrics.
 
 ## Mitigation
-- **Data Quarantine**: Implemented a circuit-breaker in `src/contract_validator.py` that splits data into `clean_df` and `quarantine_df` based on critical contract failures.
-- **Transformation Guards**: Added `unique` and `not_null` tests to `stg_orders` and `fct_daily_revenue` using dbt.
-- **Unit Testing**: Integrated dbt unit tests to verify transformation logic against edge cases (like duplicate customers) before deployment.
+- **Immediate**: Flagged the dashboard as "Unreliable" and stopped automated reporting.
+- **Data Fix**: Cleaned `stg_customers` by removing duplicate records.
+- **Pipeline Fix**: Implemented a deduplication step in `stg_customers` to ensure uniqueness.
+- **Upstream**: Triggered a full re-sync of the `orders` dataset to recover the missing ~215 rows.
 
 ## Recovery
-- The pipeline was updated to quarantine bad source data.
-- `fct_daily_revenue` was recalculated using only the cleaned dataset.
-- Revenue totals were verified against raw source logs and confirmed to be accurate.
+- After re-syncing the source data, row counts returned to the ~250 range.
+- `dbt build` was re-run; `unique_stg_customers_customer_id` passed.
+- Revenue totals were cross-verified against source CSVs and found to be accurate.
 
 ## Verification
-- [x] Contract healthy: GX checkpoints passing for `orders` source.
-- [x] dbt tests healthy: `dbt test` returns no failures across staging and marts.
-- [x] anomaly returned to expected range: Revenue metrics now within 3-MAD of historical median.
-- [x] SLO healthy / budget understood: Burn rate is currently $< 1.0$ (no budget being consumed).
-- [x] downstream output verified: CEO Dashboard totals match verified aggregates.
+- [x] Contract healthy: Freshness returned to < 30 min.
+- [x] dbt tests healthy: All staging and mart tests passing.
+- [x] anomaly returned to expected range: Row count back within 3-MAD of median.
+- [x] SLO healthy: Error budget burn stopped.
+- [x] downstream output verified: CEO Dashboard now reflects accurate volume and revenue.
 
 ## Prevention / Action Items
 | Action | Owner | Deadline | Why |
 |---|---|---|---|
-| Implement Source-Side Contracts | Data Eng | 2026-09-10 | Prevent bad data from even entering the pipeline. |
-| Mandatory Unit Tests for Marts | Analytics Eng | 2026-09-15 | Ensure financial logic is robust against duplicates. |
-| Multi-Window SLO Alerting | SRE | 2026-09-01 | Distinguish transient spikes from sustained burns to reduce alert fatigue. |
+| Critical Volume Alert | SRE | 2026-09-01 | Immediate paging when row count drops by > 50%. |
+| Hard Constraint on Customer PK | Data Eng | 2026-09-01 | Prevent any duplicate customer IDs from being loaded into the warehouse. |
+| Join Guard in Marts | Analytics Eng | 2026-09-05 | Use `LEFT JOIN` with a deduplicated subquery for dimensions to prevent inflation. |

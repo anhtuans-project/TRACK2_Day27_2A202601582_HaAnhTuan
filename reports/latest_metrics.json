@@ -1,7 +1,7 @@
 {
-  "timestamp": "2026-08-29T08:03:58.919367+00:00",
+  "timestamp": "2026-08-29T08:09:28.926238+00:00",
   "orders_rows": 37,
-  "failed_contract_checks": 0,
+  "failed_contract_checks": 1,
   "critical_contract_failures": 0,
   "row_count_anomaly": {
     "is_anomaly": true,
@@ -9,7 +9,7 @@
     "method": "auto:mad",
     "reason": "median=252.500, mad=12.500, threshold=3.5"
   },
-  "freshness_minutes": 27.44864205,
+  "freshness_minutes": 32.9487555,
   "kb_text_length_signal": {
     "is_anomaly": false,
     "score": 0.7547940916996035,
