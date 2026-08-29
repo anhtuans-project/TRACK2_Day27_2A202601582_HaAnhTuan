@@ -37,33 +37,42 @@ def evaluate_multiwindow_burn(
     long_window_burn: float,
     policy: str = "starter",
 ) -> dict[str, Any]:
-    """Implements a multi-window burn-rate policy based on SRE best practices.
+    """Implements a multi-window burn-rate policy based on Google SRE standards.
 
-    To reduce noise, we require a high burn rate in the short window
-    AND a sustained (though potentially lower) burn rate in the long window.
+    Pages on both 'Fast Burn' and 'Slow Burn' signatures to ensure critical
+    budget depletion is detected regardless of the burn speed.
     """
-    # SRE Standard Thresholds
-    # Short window (e.g., 1h) needs to be very high to indicate a critical issue
-    SHORT_CRITICAL = 14.4
-    # Long window (e.g., 6h) indicates sustainability.
-    # A burn rate of 1.0 means we are consuming budget exactly at the rate we earn it.
-    # We typically want to see it significantly above 1.0 to page.
-    LONG_CRITICAL = 2.0
+    # Thresholds for Fast Burn (consumes budget quickly)
+    FAST_BURN_THRESHOLD = 14.4
+    # Thresholds for Slow Burn (consumes budget steadily)
+    SLOW_BURN_THRESHOLD = 2.0
 
-    if short_window_burn >= SHORT_CRITICAL and long_window_burn >= LONG_CRITICAL:
+    # Fast Burn: High burn rate across both windows
+    if short_window_burn >= FAST_BURN_THRESHOLD and long_window_burn >= FAST_BURN_THRESHOLD:
         return {
             "page": True,
             "severity": "critical",
-            "reason": "Sustained critical burn detected (High short-window, sustained long-window)",
+            "reason": "Fast burn detected: High burn rate across both windows",
             "short_window_burn": short_window_burn,
             "long_window_burn": long_window_burn,
         }
 
+    # Slow Burn: Moderate burn rate across both windows
+    if short_window_burn >= SLOW_BURN_THRESHOLD and long_window_burn >= SLOW_BURN_THRESHOLD:
+        return {
+            "page": True,
+            "severity": "warning",
+            "reason": "Slow burn detected: Sustained moderate burn rate",
+            "short_window_burn": short_window_burn,
+            "long_window_burn": long_window_burn,
+        }
+
+    # Warning: One window is high, but not sustained across both
     if short_window_burn >= 6.0 or long_window_burn >= 6.0:
         return {
             "page": False,
             "severity": "warning",
-            "reason": "Elevated burn rate detected",
+            "reason": "Elevated burn rate detected in one window",
             "short_window_burn": short_window_burn,
             "long_window_burn": long_window_burn,
         }

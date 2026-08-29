@@ -62,27 +62,20 @@ def detect_anomaly(
 
     Improved `auto` mode:
     - Uses `same_segment_history` from context if available (e.g. for seasonality).
-    - Adjusts threshold if a `known_event` is present to reduce false positives.
-    - Handles `trend` (increasing/decreasing) by adjusting the baseline.
-    - Prefers MAD for robustness if enough data is present.
+    - Handles `trend` by focusing on recent history for the baseline.
+    - Adjusts threshold for `known_event`.
+    - Prefers MAD for robustness.
     """
     # 1. Resolve history based on context (Seasonality/Segments)
     effective_history = list(history)
     if context and "same_segment_history" in context:
         effective_history = list(context["same_segment_history"])
 
-    # 2. Adjust for Trend
-    # If there is a known trend, the current value should be compared to a shifted baseline
-    if context and "trend" in context:
-        trend = context["trend"]
-        if len(effective_history) > 0:
-            # Simple linear trend adjustment: shift baseline by 1% of mean if trend is present
-            mean_val = np.mean(effective_history)
-            adjustment = 0.01 * mean_val
-            if trend == "increasing":
-                effective_history = [v + adjustment for v in effective_history]
-            elif trend == "decreasing":
-                effective_history = [v - adjustment for v in effective_history]
+    # 2. Handle Trend (H09)
+    # If a trend is present, the absolute mean of the whole history is a poor baseline.
+    # We use the most recent 3 points to establish a local baseline.
+    if context and "trend" in context and len(effective_history) >= 3:
+        effective_history = effective_history[-3:]
 
     # 3. Adjust threshold based on context (Known Events)
     effective_threshold = threshold
@@ -95,11 +88,13 @@ def detect_anomaly(
 
     if method in {"zscore", "auto"}:
         if method == "auto":
+            # Use MAD if we have enough data
             if len(effective_history) >= 5:
                 result = mad_detector(current, effective_history, threshold=effective_threshold)
                 result["method"] = "auto:mad"
                 return result
 
+        # Fallback to Z-score
         result = zscore_detector(current, effective_history, threshold=effective_threshold)
         if method == "auto":
             result["method"] = "auto:zscore"
