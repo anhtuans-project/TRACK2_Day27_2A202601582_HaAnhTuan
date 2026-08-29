@@ -18,7 +18,8 @@ from src.contract_validator import load_contract, validate_dataframe
 
 
 def validate_orders(df: pd.DataFrame, contract_path: str | Path) -> list[dict[str, Any]]:
-    return validate_dataframe(df, load_contract(contract_path))
+    issues, _ = validate_dataframe(df, load_contract(contract_path))
+    return issues
 
 
 def detect_metric(
