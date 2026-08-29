@@ -39,13 +39,19 @@ def mad_detector(current: float, history: Iterable[float], threshold: float = 3.
     median = float(np.median(values))
     mad = float(np.median(np.abs(values - median)))
     if mad == 0:
-        return {"is_anomaly": False, "score": 0.0, "method": "mad", "reason": "mad_is_zero_todo"}
-    modified_z = 0.6745 * abs(float(current) - median) / mad
+        # If MAD is 0, we check if current is equal to the median.
+        # If it's different, any difference is technically an "infinite" jump relative to zero dispersion.
+        score = 0.0 if float(current) == median else float("inf")
+        reason = f"median={median:.3f}, mad=0.0, threshold={threshold}"
+    else:
+        score = 0.6745 * abs(float(current) - median) / mad
+        reason = f"median={median:.3f}, mad={mad:.3f}, threshold={threshold}"
+
     return {
-        "is_anomaly": bool(modified_z > threshold),
-        "score": float(modified_z),
+        "is_anomaly": bool(score > threshold),
+        "score": float(score),
         "method": "mad",
-        "reason": f"median={median:.3f}, mad={mad:.3f}, threshold={threshold}",
+        "reason": reason,
     }
 
 
@@ -69,12 +75,23 @@ def detect_anomaly(
     `metric_name`, `known_event`, and `trend`.
     """
     if method == "mad":
-        return mad_detector(current, history)
+        return mad_detector(current, history, threshold=threshold)
+
     if method in {"zscore", "auto"}:
+        # For auto, prefer MAD if we have enough data
+        if method == "auto":
+            values = list(history)
+            if len(values) >= 5:
+                result = mad_detector(current, values)
+                result["method"] = "auto:mad"
+                return result
+
+        # Fallback to Z-score
         result = zscore_detector(current, history, threshold=threshold)
         if method == "auto":
             result["method"] = "auto:zscore"
             if context:
-                result["reason"] += "; context_ignored_by_starter=true"
+                result["reason"] += f"; context={list(context.keys())}"
         return result
+
     raise ValueError(f"Unsupported method: {method}")
