@@ -42,10 +42,32 @@ def evaluate_multiwindow_burn(
     Starter intentionally never pages. Hidden evaluation contains cases that
     require distinguishing sustained fast burn from a transient spike.
     """
+    # Industry standard thresholds for SRE burn rates
+    CRITICAL_THRESHOLD = 14.4
+    WARNING_THRESHOLD = 6.0
+
+    if short_window_burn >= CRITICAL_THRESHOLD and long_window_burn >= CRITICAL_THRESHOLD:
+        return {
+            "page": True,
+            "severity": "critical",
+            "reason": "Sustained fast burn detected across both windows",
+            "short_window_burn": short_window_burn,
+            "long_window_burn": long_window_burn,
+        }
+
+    if short_window_burn >= WARNING_THRESHOLD or long_window_burn >= WARNING_THRESHOLD:
+        return {
+            "page": False,
+            "severity": "warning",
+            "reason": "Transient spike or moderate burn detected",
+            "short_window_burn": short_window_burn,
+            "long_window_burn": long_window_burn,
+        }
+
     return {
         "page": False,
         "severity": "info",
-        "reason": "starter_policy_not_implemented",
+        "reason": "Burn rates within normal range",
         "short_window_burn": short_window_burn,
         "long_window_burn": long_window_burn,
     }
