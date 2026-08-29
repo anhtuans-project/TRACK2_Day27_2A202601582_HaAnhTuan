@@ -27,3 +27,4 @@ models:
       - name: customer_id
         data_tests:
           - not_null
+          - unique

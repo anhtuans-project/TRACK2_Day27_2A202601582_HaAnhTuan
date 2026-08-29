@@ -1,0 +1,16 @@
+version: 2
+
+unit_tests:
+  - name: test_revenue_inflation_on_duplicate_customers
+    model: fct_daily_revenue
+    given:
+      - input: ref('stg_orders')
+        rows:
+          - {order_id: 1, customer_id: 'C1', amount_usd: 100, status: 'completed', order_date: '2026-08-29'}
+      - input: ref('stg_customers')
+        rows:
+          - {customer_id: 'C1', is_active: true}
+          - {customer_id: 'C1', is_active: true}
+    expect:
+      rows:
+        - {order_date: '2026-08-29', completed_order_rows: 1, daily_revenue: 100}
